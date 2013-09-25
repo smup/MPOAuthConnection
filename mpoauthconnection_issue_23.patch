@@ -1,0 +1,1013 @@
+Index: Source/Framework/MPOAuthAPIRequestLoader.m
+===================================================================
+--- Source/Framework/MPOAuthAPIRequestLoader.m	(revision 122)
++++ Source/Framework/MPOAuthAPIRequestLoader.m	(working copy)
+@@ -172,8 +172,13 @@
+ 																			object:nil
+ 																		  userInfo:foundParameters];
+ 						
+-					}
++					}						
+ 				}
++				
++				// something's messed up, so throw an error
++				[[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
++																	object:nil
++																  userInfo:foundParameters];
+ 			}
+ 		} else if ([response length] > 11 && [[response substringToIndex:11] isEqualToString:@"oauth_token"]) {
+ 			NSString *aParameterValue = nil;
+Index: Source/Framework/MPOAuthAuthenticationMethodOAuth.h
+===================================================================
+--- Source/Framework/MPOAuthAuthenticationMethodOAuth.h	(revision 122)
++++ Source/Framework/MPOAuthAuthenticationMethodOAuth.h	(working copy)
+@@ -38,6 +38,7 @@
+ - (BOOL)automaticallyRequestAuthenticationFromURL:(NSURL *)inAuthURL withCallbackURL:(NSURL *)inCallbackURL;
+ 
+ @optional
++- (NSString *)oauthVerifierForCompletedUserAuthorization;
+ - (void)authenticationDidFailWithError:(NSError *)error;
+ @end
+ 
+Index: Source/Framework/MPOAuthAuthenticationMethodOAuth.m
+===================================================================
+--- Source/Framework/MPOAuthAuthenticationMethodOAuth.m	(revision 122)
++++ Source/Framework/MPOAuthAuthenticationMethodOAuth.m	(working copy)
+@@ -27,6 +27,7 @@
+ NSString * const MPOAuthCredentialAccessTokenKey			= @"oauth_token_access";
+ NSString * const MPOAuthCredentialAccessTokenSecretKey		= @"oauth_token_access_secret";
+ NSString * const MPOAuthCredentialSessionHandleKey			= @"oauth_session_handle";
++NSString * const MPOAuthCredentialVerifierKey				= @"oauth_verifier";
+ 
+ //TODO: Remove this!
+ @interface MPOAuthAPI ()
+@@ -83,10 +84,12 @@
+ 		[self _authenticationRequestForAccessToken];
+ 	} else if (credentials.accessToken) {
+ 		NSTimeInterval expiryDateInterval = [[NSUserDefaults standardUserDefaults] doubleForKey:kMPOAuthTokenRefreshDateDefaultsKey];
+-		NSDate *tokenExpiryDate = [NSDate dateWithTimeIntervalSinceReferenceDate:expiryDateInterval];
+-		
+-		if ([tokenExpiryDate compare:[NSDate date]] == NSOrderedAscending) {
+-			[self refreshAccessToken];
++		if (expiryDateInterval) {
++			NSDate *tokenExpiryDate = [NSDate dateWithTimeIntervalSinceReferenceDate:expiryDateInterval];
++			
++			if ([tokenExpiryDate compare:[NSDate date]] == NSOrderedAscending) {
++				[self refreshAccessToken];
++			}
+ 		}
+ 	}	
+ }
+@@ -149,10 +152,24 @@
+ }
+ 
+ - (void)_authenticationRequestForAccessToken {
++	NSArray *params = nil;
++	
++	if (self.delegate && [self.delegate respondsToSelector: @selector(oauthVerifierForCompletedUserAuthorization)]) {
++		MPURLRequestParameter *verifierParameter = nil;
++
++		NSString *verifier = [self.delegate oauthVerifierForCompletedUserAuthorization];
++		if (verifier) {
++			verifierParameter = [[[MPURLRequestParameter alloc] initWithName:@"oauth_verifier" andValue:verifier] autorelease];
++			params = [NSArray arrayWithObject:verifierParameter];
++		}
++	}
++	
+ 	if (self.oauthGetAccessTokenURL) {
+ 		MPLog(@"--> Performing Access Token Request: %@", self.oauthGetAccessTokenURL);
+-		[self.oauthAPI performMethod:nil atURL:self.oauthGetAccessTokenURL withParameters:nil withTarget:self andAction:nil];
++		[self.oauthAPI performMethod:nil atURL:self.oauthGetAccessTokenURL withParameters:params withTarget:self andAction:nil];
+ 	}
++	
++	// XXX - done with oauth_verifier so can discard it
+ }
+ 
+ #pragma mark -
+@@ -184,13 +201,19 @@
+ 
+ 	[self.oauthAPI setAuthenticationState:MPOAuthAuthenticationStateAuthenticated];
+ 	
+-	NSTimeInterval tokenRefreshInterval = (NSTimeInterval)[[[inNotification userInfo] objectForKey:@"oauth_expires_in"] intValue];
+-	NSDate *tokenExpiryDate = [NSDate dateWithTimeIntervalSinceNow:tokenRefreshInterval];
+-	[[NSUserDefaults standardUserDefaults] setDouble:[tokenExpiryDate timeIntervalSinceReferenceDate] forKey:kMPOAuthTokenRefreshDateDefaultsKey];
++	if ([[inNotification userInfo] objectForKey:@"oauth_expires_in"]) {
++		NSTimeInterval tokenRefreshInterval = (NSTimeInterval)[[[inNotification userInfo] objectForKey:@"oauth_expires_in"] intValue];
++		NSDate *tokenExpiryDate = [NSDate dateWithTimeIntervalSinceNow:tokenRefreshInterval];
++		[[NSUserDefaults standardUserDefaults] setDouble:[tokenExpiryDate timeIntervalSinceReferenceDate] forKey:kMPOAuthTokenRefreshDateDefaultsKey];
+ 	
+-	if (tokenRefreshInterval > 0.0) {
+-		[self setTokenRefreshInterval:tokenRefreshInterval];
++		if (tokenRefreshInterval > 0.0) {
++			[self setTokenRefreshInterval:tokenRefreshInterval];
++		}
+ 	}
++	else {
++		// no expiration time
++		[[NSUserDefaults standardUserDefaults] removeObjectForKey:kMPOAuthTokenRefreshDateDefaultsKey];
++	}
+ }
+ 
+ #pragma mark -
+Index: MPOAuthMobile/MPOAuthMobile.xcodeproj/project.pbxproj
+===================================================================
+--- MPOAuthMobile/MPOAuthMobile.xcodeproj/project.pbxproj	(revision 122)
++++ MPOAuthMobile/MPOAuthMobile.xcodeproj/project.pbxproj	(working copy)
+@@ -15,26 +15,28 @@
+ 		2899E5600DE3E45000AC0155 /* RootViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 2899E55F0DE3E45000AC0155 /* RootViewController.xib */; };
+ 		28AD73600D9D9599002E5188 /* MainWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = 28AD735F0D9D9599002E5188 /* MainWindow.xib */; };
+ 		28C286E10D94DF7D0034E888 /* RootViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 28C286E00D94DF7D0034E888 /* RootViewController.m */; };
++		9BBCB3D21108E0D9003CD360 /* Base64Transcoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3A91108E0D9003CD360 /* Base64Transcoder.c */; };
++		9BBCB3D31108E0D9003CD360 /* MPOAuthAPI.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3AE1108E0D9003CD360 /* MPOAuthAPI.m */; };
++		9BBCB3D41108E0D9003CD360 /* MPOAuthAPIRequestLoader.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3B01108E0D9003CD360 /* MPOAuthAPIRequestLoader.m */; };
++		9BBCB3D51108E0D9003CD360 /* MPOAuthAuthenticationMethod.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3B21108E0D9003CD360 /* MPOAuthAuthenticationMethod.m */; };
++		9BBCB3D61108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3B41108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.m */; };
++		9BBCB3D71108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3B61108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.m */; };
++		9BBCB3D81108E0D9003CD360 /* MPOAuthConnection.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3B81108E0D9003CD360 /* MPOAuthConnection.m */; };
++		9BBCB3D91108E0D9003CD360 /* MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3B91108E0D9003CD360 /* MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m */; };
++		9BBCB3DA1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3BB1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m */; };
++		9BBCB3DB1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3BD1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.m */; };
++		9BBCB3DC1108E0D9003CD360 /* MPOAuthSignatureParameter.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3C11108E0D9003CD360 /* MPOAuthSignatureParameter.m */; };
++		9BBCB3DD1108E0D9003CD360 /* MPOAuthURLRequest.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3C31108E0D9003CD360 /* MPOAuthURLRequest.m */; };
++		9BBCB3DE1108E0D9003CD360 /* MPOAuthURLResponse.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3C51108E0D9003CD360 /* MPOAuthURLResponse.m */; };
++		9BBCB3DF1108E0D9003CD360 /* MPURLRequestParameter.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3C71108E0D9003CD360 /* MPURLRequestParameter.m */; };
++		9BBCB3E01108E0D9003CD360 /* MPWSLRDDiscoverer.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3C91108E0D9003CD360 /* MPWSLRDDiscoverer.m */; };
++		9BBCB3E11108E0D9003CD360 /* MPWSXRDDocument.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3CB1108E0D9003CD360 /* MPWSXRDDocument.m */; };
++		9BBCB3E21108E0D9003CD360 /* NSString+URLEscapingAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3CD1108E0D9003CD360 /* NSString+URLEscapingAdditions.m */; };
++		9BBCB3E31108E0D9003CD360 /* NSURL+MPURLParameterAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3CF1108E0D9003CD360 /* NSURL+MPURLParameterAdditions.m */; };
++		9BBCB3E41108E0D9003CD360 /* NSURLResponse+Encoding.m in Sources */ = {isa = PBXBuildFile; fileRef = 9BBCB3D11108E0D9003CD360 /* NSURLResponse+Encoding.m */; };
++		9BBCB44D1108E7F6003CD360 /* libxml2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 9BBCB44C1108E7F6003CD360 /* libxml2.dylib */; };
++		9BBCB4881108E954003CD360 /* oauthAutoConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9BBCB4871108E954003CD360 /* oauthAutoConfig.plist */; };
+ 		CB9213A90EF6127700A89BBD /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CB9213A80EF6127700A89BBD /* Security.framework */; };
+-		CBCC930D0F395DE900DBEF2D /* oauthAutoConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = CBCC930C0F395DE900DBEF2D /* oauthAutoConfig.plist */; };
+-		CBCC93350F3961A200DBEF2D /* UserAuthViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = CBCC93340F3961A200DBEF2D /* UserAuthViewController.xib */; };
+-		CBCC93390F39652300DBEF2D /* UserAuthViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = CBCC93380F39652300DBEF2D /* UserAuthViewController.m */; };
+-		CBDC0D9B0F2068A100F30E8F /* Base64Transcoder.c in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D790F2068A100F30E8F /* Base64Transcoder.c */; };
+-		CBDC0D9C0F2068A100F30E8F /* hmac.c in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D7B0F2068A100F30E8F /* hmac.c */; };
+-		CBDC0D9D0F2068A100F30E8F /* sha1.c in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D7D0F2068A100F30E8F /* sha1.c */; };
+-		CBDC0D9E0F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsiPhone.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D810F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsiPhone.m */; };
+-		CBDC0D9F0F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsMac.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D820F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsMac.m */; };
+-		CBDC0DA00F2068A100F30E8F /* MPOAuthAPI.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D840F2068A100F30E8F /* MPOAuthAPI.m */; };
+-		CBDC0DA10F2068A100F30E8F /* MPOAuthAPIRequestLoader.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D860F2068A100F30E8F /* MPOAuthAPIRequestLoader.m */; };
+-		CBDC0DA20F2068A100F30E8F /* MPOAuthConnection.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D880F2068A100F30E8F /* MPOAuthConnection.m */; };
+-		CBDC0DA30F2068A100F30E8F /* MPOAuthCredentialConcreteStore.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D8A0F2068A100F30E8F /* MPOAuthCredentialConcreteStore.m */; };
+-		CBDC0DA40F2068A100F30E8F /* MPOAuthSignatureParameter.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D8E0F2068A100F30E8F /* MPOAuthSignatureParameter.m */; };
+-		CBDC0DA50F2068A100F30E8F /* MPOAuthURLRequest.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D900F2068A100F30E8F /* MPOAuthURLRequest.m */; };
+-		CBDC0DA60F2068A100F30E8F /* MPOAuthURLResponse.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D920F2068A100F30E8F /* MPOAuthURLResponse.m */; };
+-		CBDC0DA70F2068A100F30E8F /* MPURLRequestParameter.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D940F2068A100F30E8F /* MPURLRequestParameter.m */; };
+-		CBDC0DA80F2068A100F30E8F /* NSString+URLEscapingAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D960F2068A100F30E8F /* NSString+URLEscapingAdditions.m */; };
+-		CBDC0DA90F2068A100F30E8F /* NSURL+MPURLParameterAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D980F2068A100F30E8F /* NSURL+MPURLParameterAdditions.m */; };
+-		CBDC0DAA0F2068A100F30E8F /* NSURLResponse+Encoding.m in Sources */ = {isa = PBXBuildFile; fileRef = CBDC0D9A0F2068A100F30E8F /* NSURLResponse+Encoding.m */; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXFileReference section */
+@@ -51,46 +53,50 @@
+ 		28C286E00D94DF7D0034E888 /* RootViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RootViewController.m; sourceTree = "<group>"; };
+ 		29B97316FDCFA39411CA2CEA /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+ 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
++		9BBCB3A91108E0D9003CD360 /* Base64Transcoder.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = Base64Transcoder.c; path = ../Source/Framework/Crypto/Base64Transcoder.c; sourceTree = SOURCE_ROOT; };
++		9BBCB3AA1108E0D9003CD360 /* Base64Transcoder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Base64Transcoder.h; path = ../Source/Framework/Crypto/Base64Transcoder.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3AB1108E0D9003CD360 /* MPDebug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPDebug.h; path = ../Source/Framework/MPDebug.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3AC1108E0D9003CD360 /* MPOAuth.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuth.h; path = ../Source/Framework/MPOAuth.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3AD1108E0D9003CD360 /* MPOAuthAPI.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthAPI.h; path = ../Source/Framework/MPOAuthAPI.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3AE1108E0D9003CD360 /* MPOAuthAPI.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthAPI.m; path = ../Source/Framework/MPOAuthAPI.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3AF1108E0D9003CD360 /* MPOAuthAPIRequestLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthAPIRequestLoader.h; path = ../Source/Framework/MPOAuthAPIRequestLoader.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3B01108E0D9003CD360 /* MPOAuthAPIRequestLoader.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthAPIRequestLoader.m; path = ../Source/Framework/MPOAuthAPIRequestLoader.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3B11108E0D9003CD360 /* MPOAuthAuthenticationMethod.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthAuthenticationMethod.h; path = ../Source/Framework/MPOAuthAuthenticationMethod.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3B21108E0D9003CD360 /* MPOAuthAuthenticationMethod.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthAuthenticationMethod.m; path = ../Source/Framework/MPOAuthAuthenticationMethod.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3B31108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthAuthenticationMethodAuthExchange.h; path = ../Source/Framework/MPOAuthAuthenticationMethodAuthExchange.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3B41108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthAuthenticationMethodAuthExchange.m; path = ../Source/Framework/MPOAuthAuthenticationMethodAuthExchange.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3B51108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthAuthenticationMethodOAuth.h; path = ../Source/Framework/MPOAuthAuthenticationMethodOAuth.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3B61108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthAuthenticationMethodOAuth.m; path = ../Source/Framework/MPOAuthAuthenticationMethodOAuth.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3B71108E0D9003CD360 /* MPOAuthConnection.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthConnection.h; path = ../Source/Framework/MPOAuthConnection.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3B81108E0D9003CD360 /* MPOAuthConnection.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthConnection.m; path = ../Source/Framework/MPOAuthConnection.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3B91108E0D9003CD360 /* MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = "MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m"; path = "../Source/Framework/MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m"; sourceTree = SOURCE_ROOT; };
++		9BBCB3BA1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "MPOAuthCredentialConcreteStore+KeychainAdditions.h"; path = "../Source/Framework/MPOAuthCredentialConcreteStore+KeychainAdditions.h"; sourceTree = SOURCE_ROOT; };
++		9BBCB3BB1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = "MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m"; path = "../Source/Framework/MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m"; sourceTree = SOURCE_ROOT; };
++		9BBCB3BC1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthCredentialConcreteStore.h; path = ../Source/Framework/MPOAuthCredentialConcreteStore.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3BD1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthCredentialConcreteStore.m; path = ../Source/Framework/MPOAuthCredentialConcreteStore.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3BE1108E0D9003CD360 /* MPOAuthCredentialStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthCredentialStore.h; path = ../Source/Framework/MPOAuthCredentialStore.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3BF1108E0D9003CD360 /* MPOAuthParameterFactory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthParameterFactory.h; path = ../Source/Framework/MPOAuthParameterFactory.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3C01108E0D9003CD360 /* MPOAuthSignatureParameter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthSignatureParameter.h; path = ../Source/Framework/MPOAuthSignatureParameter.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3C11108E0D9003CD360 /* MPOAuthSignatureParameter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthSignatureParameter.m; path = ../Source/Framework/MPOAuthSignatureParameter.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3C21108E0D9003CD360 /* MPOAuthURLRequest.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthURLRequest.h; path = ../Source/Framework/MPOAuthURLRequest.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3C31108E0D9003CD360 /* MPOAuthURLRequest.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthURLRequest.m; path = ../Source/Framework/MPOAuthURLRequest.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3C41108E0D9003CD360 /* MPOAuthURLResponse.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthURLResponse.h; path = ../Source/Framework/MPOAuthURLResponse.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3C51108E0D9003CD360 /* MPOAuthURLResponse.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPOAuthURLResponse.m; path = ../Source/Framework/MPOAuthURLResponse.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3C61108E0D9003CD360 /* MPURLRequestParameter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPURLRequestParameter.h; path = ../Source/Framework/MPURLRequestParameter.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3C71108E0D9003CD360 /* MPURLRequestParameter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPURLRequestParameter.m; path = ../Source/Framework/MPURLRequestParameter.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3C81108E0D9003CD360 /* MPWSLRDDiscoverer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPWSLRDDiscoverer.h; path = ../Source/Framework/MPWSLRDDiscoverer.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3C91108E0D9003CD360 /* MPWSLRDDiscoverer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPWSLRDDiscoverer.m; path = ../Source/Framework/MPWSLRDDiscoverer.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3CA1108E0D9003CD360 /* MPWSXRDDocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPWSXRDDocument.h; path = ../Source/Framework/MPWSXRDDocument.h; sourceTree = SOURCE_ROOT; };
++		9BBCB3CB1108E0D9003CD360 /* MPWSXRDDocument.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = MPWSXRDDocument.m; path = ../Source/Framework/MPWSXRDDocument.m; sourceTree = SOURCE_ROOT; };
++		9BBCB3CC1108E0D9003CD360 /* NSString+URLEscapingAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "NSString+URLEscapingAdditions.h"; path = "../Source/Framework/NSString+URLEscapingAdditions.h"; sourceTree = SOURCE_ROOT; };
++		9BBCB3CD1108E0D9003CD360 /* NSString+URLEscapingAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = "NSString+URLEscapingAdditions.m"; path = "../Source/Framework/NSString+URLEscapingAdditions.m"; sourceTree = SOURCE_ROOT; };
++		9BBCB3CE1108E0D9003CD360 /* NSURL+MPURLParameterAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "NSURL+MPURLParameterAdditions.h"; path = "../Source/Framework/NSURL+MPURLParameterAdditions.h"; sourceTree = SOURCE_ROOT; };
++		9BBCB3CF1108E0D9003CD360 /* NSURL+MPURLParameterAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = "NSURL+MPURLParameterAdditions.m"; path = "../Source/Framework/NSURL+MPURLParameterAdditions.m"; sourceTree = SOURCE_ROOT; };
++		9BBCB3D01108E0D9003CD360 /* NSURLResponse+Encoding.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "NSURLResponse+Encoding.h"; path = "../Source/Framework/NSURLResponse+Encoding.h"; sourceTree = SOURCE_ROOT; };
++		9BBCB3D11108E0D9003CD360 /* NSURLResponse+Encoding.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = "NSURLResponse+Encoding.m"; path = "../Source/Framework/NSURLResponse+Encoding.m"; sourceTree = SOURCE_ROOT; };
++		9BBCB44C1108E7F6003CD360 /* libxml2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.dylib; path = usr/lib/libxml2.dylib; sourceTree = SDKROOT; };
++		9BBCB4871108E954003CD360 /* oauthAutoConfig.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = oauthAutoConfig.plist; path = ../Resources/oauthAutoConfig.plist; sourceTree = SOURCE_ROOT; };
+ 		CB9213A80EF6127700A89BBD /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+-		CBCC930C0F395DE900DBEF2D /* oauthAutoConfig.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = oauthAutoConfig.plist; path = ../Resources/oauthAutoConfig.plist; sourceTree = SOURCE_ROOT; };
+-		CBCC93340F3961A200DBEF2D /* UserAuthViewController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = UserAuthViewController.xib; sourceTree = "<group>"; };
+-		CBCC93370F39652300DBEF2D /* UserAuthViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserAuthViewController.h; sourceTree = "<group>"; };
+-		CBCC93380F39652300DBEF2D /* UserAuthViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = UserAuthViewController.m; sourceTree = "<group>"; };
+-		CBDC0D790F2068A100F30E8F /* Base64Transcoder.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = Base64Transcoder.c; sourceTree = "<group>"; };
+-		CBDC0D7A0F2068A100F30E8F /* Base64Transcoder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Base64Transcoder.h; sourceTree = "<group>"; };
+-		CBDC0D7B0F2068A100F30E8F /* hmac.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = hmac.c; sourceTree = "<group>"; };
+-		CBDC0D7C0F2068A100F30E8F /* hmac.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hmac.h; sourceTree = "<group>"; };
+-		CBDC0D7D0F2068A100F30E8F /* sha1.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = sha1.c; sourceTree = "<group>"; };
+-		CBDC0D7E0F2068A100F30E8F /* sha1.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = sha1.h; sourceTree = "<group>"; };
+-		CBDC0D7F0F2068A100F30E8F /* MPOAuth.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuth.h; sourceTree = "<group>"; };
+-		CBDC0D800F2068A100F30E8F /* MPOAuthAPI+KeychainAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "MPOAuthAPI+KeychainAdditions.h"; sourceTree = "<group>"; };
+-		CBDC0D810F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsiPhone.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "MPOAuthAPI+KeychainAdditionsiPhone.m"; sourceTree = "<group>"; };
+-		CBDC0D820F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsMac.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "MPOAuthAPI+KeychainAdditionsMac.m"; sourceTree = "<group>"; };
+-		CBDC0D830F2068A100F30E8F /* MPOAuthAPI.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthAPI.h; sourceTree = "<group>"; };
+-		CBDC0D840F2068A100F30E8F /* MPOAuthAPI.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthAPI.m; sourceTree = "<group>"; };
+-		CBDC0D850F2068A100F30E8F /* MPOAuthAPIRequestLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthAPIRequestLoader.h; sourceTree = "<group>"; };
+-		CBDC0D860F2068A100F30E8F /* MPOAuthAPIRequestLoader.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthAPIRequestLoader.m; sourceTree = "<group>"; };
+-		CBDC0D870F2068A100F30E8F /* MPOAuthConnection.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthConnection.h; sourceTree = "<group>"; };
+-		CBDC0D880F2068A100F30E8F /* MPOAuthConnection.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthConnection.m; sourceTree = "<group>"; };
+-		CBDC0D890F2068A100F30E8F /* MPOAuthCredentialConcreteStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthCredentialConcreteStore.h; sourceTree = "<group>"; };
+-		CBDC0D8A0F2068A100F30E8F /* MPOAuthCredentialConcreteStore.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthCredentialConcreteStore.m; sourceTree = "<group>"; };
+-		CBDC0D8B0F2068A100F30E8F /* MPOAuthCredentialStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthCredentialStore.h; sourceTree = "<group>"; };
+-		CBDC0D8C0F2068A100F30E8F /* MPOAuthParameterFactory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthParameterFactory.h; sourceTree = "<group>"; };
+-		CBDC0D8D0F2068A100F30E8F /* MPOAuthSignatureParameter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthSignatureParameter.h; sourceTree = "<group>"; };
+-		CBDC0D8E0F2068A100F30E8F /* MPOAuthSignatureParameter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthSignatureParameter.m; sourceTree = "<group>"; };
+-		CBDC0D8F0F2068A100F30E8F /* MPOAuthURLRequest.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthURLRequest.h; sourceTree = "<group>"; };
+-		CBDC0D900F2068A100F30E8F /* MPOAuthURLRequest.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthURLRequest.m; sourceTree = "<group>"; };
+-		CBDC0D910F2068A100F30E8F /* MPOAuthURLResponse.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPOAuthURLResponse.h; sourceTree = "<group>"; };
+-		CBDC0D920F2068A100F30E8F /* MPOAuthURLResponse.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPOAuthURLResponse.m; sourceTree = "<group>"; };
+-		CBDC0D930F2068A100F30E8F /* MPURLRequestParameter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPURLRequestParameter.h; sourceTree = "<group>"; };
+-		CBDC0D940F2068A100F30E8F /* MPURLRequestParameter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = MPURLRequestParameter.m; sourceTree = "<group>"; };
+-		CBDC0D950F2068A100F30E8F /* NSString+URLEscapingAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSString+URLEscapingAdditions.h"; sourceTree = "<group>"; };
+-		CBDC0D960F2068A100F30E8F /* NSString+URLEscapingAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSString+URLEscapingAdditions.m"; sourceTree = "<group>"; };
+-		CBDC0D970F2068A100F30E8F /* NSURL+MPURLParameterAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURL+MPURLParameterAdditions.h"; sourceTree = "<group>"; };
+-		CBDC0D980F2068A100F30E8F /* NSURL+MPURLParameterAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURL+MPURLParameterAdditions.m"; sourceTree = "<group>"; };
+-		CBDC0D990F2068A100F30E8F /* NSURLResponse+Encoding.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURLResponse+Encoding.h"; sourceTree = "<group>"; };
+-		CBDC0D9A0F2068A100F30E8F /* NSURLResponse+Encoding.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURLResponse+Encoding.m"; sourceTree = "<group>"; };
+-		CBF8CC5A0F7BEE78007591B9 /* MPDebug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MPDebug.h; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+@@ -102,6 +108,7 @@
+ 				1DF5F4E00D08C38300B7A737 /* UIKit.framework in Frameworks */,
+ 				2892E4100DC94CBA00A64D0F /* CoreGraphics.framework in Frameworks */,
+ 				CB9213A90EF6127700A89BBD /* Security.framework in Frameworks */,
++				9BBCB44D1108E7F6003CD360 /* libxml2.dylib in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -113,8 +120,6 @@
+ 			children = (
+ 				28C286DF0D94DF7D0034E888 /* RootViewController.h */,
+ 				28C286E00D94DF7D0034E888 /* RootViewController.m */,
+-				CBCC93370F39652300DBEF2D /* UserAuthViewController.h */,
+-				CBCC93380F39652300DBEF2D /* UserAuthViewController.m */,
+ 				1D3623240D0F684500981E51 /* MPOAuthMobileAppDelegate.h */,
+ 				1D3623250D0F684500981E51 /* MPOAuthMobileAppDelegate.m */,
+ 			);
+@@ -138,6 +143,7 @@
+ 				29B97317FDCFA39411CA2CEA /* Resources */,
+ 				29B97323FDCFA39411CA2CEA /* Frameworks */,
+ 				19C28FACFE9D520D11CA2CBB /* Products */,
++				9BBCB44C1108E7F6003CD360 /* libxml2.dylib */,
+ 			);
+ 			name = CustomTemplate;
+ 			sourceTree = "<group>";
+@@ -154,8 +160,8 @@
+ 		29B97317FDCFA39411CA2CEA /* Resources */ = {
+ 			isa = PBXGroup;
+ 			children = (
++				9BBCB4871108E954003CD360 /* oauthAutoConfig.plist */,
+ 				2899E55F0DE3E45000AC0155 /* RootViewController.xib */,
+-				CBCC93340F3961A200DBEF2D /* UserAuthViewController.xib */,
+ 				28AD735F0D9D9599002E5188 /* MainWindow.xib */,
+ 				8D1107310486CEB800E47090 /* Info.plist */,
+ 			);
+@@ -173,66 +179,64 @@
+ 			name = Frameworks;
+ 			sourceTree = "<group>";
+ 		};
+-		CBCC93090F395DC900DBEF2D /* Resources */ = {
++		9BBCB3A81108E0D9003CD360 /* Crypto */ = {
+ 			isa = PBXGroup;
+ 			children = (
+-				CBCC930C0F395DE900DBEF2D /* oauthAutoConfig.plist */,
++				9BBCB3A91108E0D9003CD360 /* Base64Transcoder.c */,
++				9BBCB3AA1108E0D9003CD360 /* Base64Transcoder.h */,
+ 			);
+-			name = Resources;
+-			sourceTree = "<group>";
++			name = Crypto;
++			path = ../Source/Framework/Crypto;
++			sourceTree = SOURCE_ROOT;
+ 		};
+ 		CBDC0D770F2068A100F30E8F /* MPOAuth */ = {
+ 			isa = PBXGroup;
+ 			children = (
+-				CBDC0D7F0F2068A100F30E8F /* MPOAuth.h */,
+-				CBF8CC5A0F7BEE78007591B9 /* MPDebug.h */,
+-				CBCC93090F395DC900DBEF2D /* Resources */,
+-				CBDC0D780F2068A100F30E8F /* Crypto */,
+-				CBDC0D800F2068A100F30E8F /* MPOAuthAPI+KeychainAdditions.h */,
+-				CBDC0D810F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsiPhone.m */,
+-				CBDC0D820F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsMac.m */,
+-				CBDC0D830F2068A100F30E8F /* MPOAuthAPI.h */,
+-				CBDC0D840F2068A100F30E8F /* MPOAuthAPI.m */,
+-				CBDC0D850F2068A100F30E8F /* MPOAuthAPIRequestLoader.h */,
+-				CBDC0D860F2068A100F30E8F /* MPOAuthAPIRequestLoader.m */,
+-				CBDC0D870F2068A100F30E8F /* MPOAuthConnection.h */,
+-				CBDC0D880F2068A100F30E8F /* MPOAuthConnection.m */,
+-				CBDC0D890F2068A100F30E8F /* MPOAuthCredentialConcreteStore.h */,
+-				CBDC0D8A0F2068A100F30E8F /* MPOAuthCredentialConcreteStore.m */,
+-				CBDC0D8B0F2068A100F30E8F /* MPOAuthCredentialStore.h */,
+-				CBDC0D8C0F2068A100F30E8F /* MPOAuthParameterFactory.h */,
+-				CBDC0D8D0F2068A100F30E8F /* MPOAuthSignatureParameter.h */,
+-				CBDC0D8E0F2068A100F30E8F /* MPOAuthSignatureParameter.m */,
+-				CBDC0D8F0F2068A100F30E8F /* MPOAuthURLRequest.h */,
+-				CBDC0D900F2068A100F30E8F /* MPOAuthURLRequest.m */,
+-				CBDC0D910F2068A100F30E8F /* MPOAuthURLResponse.h */,
+-				CBDC0D920F2068A100F30E8F /* MPOAuthURLResponse.m */,
+-				CBDC0D930F2068A100F30E8F /* MPURLRequestParameter.h */,
+-				CBDC0D940F2068A100F30E8F /* MPURLRequestParameter.m */,
+-				CBDC0D950F2068A100F30E8F /* NSString+URLEscapingAdditions.h */,
+-				CBDC0D960F2068A100F30E8F /* NSString+URLEscapingAdditions.m */,
+-				CBDC0D970F2068A100F30E8F /* NSURL+MPURLParameterAdditions.h */,
+-				CBDC0D980F2068A100F30E8F /* NSURL+MPURLParameterAdditions.m */,
+-				CBDC0D990F2068A100F30E8F /* NSURLResponse+Encoding.h */,
+-				CBDC0D9A0F2068A100F30E8F /* NSURLResponse+Encoding.m */,
++				9BBCB3A81108E0D9003CD360 /* Crypto */,
++				9BBCB3AB1108E0D9003CD360 /* MPDebug.h */,
++				9BBCB3AC1108E0D9003CD360 /* MPOAuth.h */,
++				9BBCB3AD1108E0D9003CD360 /* MPOAuthAPI.h */,
++				9BBCB3AE1108E0D9003CD360 /* MPOAuthAPI.m */,
++				9BBCB3AF1108E0D9003CD360 /* MPOAuthAPIRequestLoader.h */,
++				9BBCB3B01108E0D9003CD360 /* MPOAuthAPIRequestLoader.m */,
++				9BBCB3B11108E0D9003CD360 /* MPOAuthAuthenticationMethod.h */,
++				9BBCB3B21108E0D9003CD360 /* MPOAuthAuthenticationMethod.m */,
++				9BBCB3B31108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.h */,
++				9BBCB3B41108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.m */,
++				9BBCB3B51108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.h */,
++				9BBCB3B61108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.m */,
++				9BBCB3B71108E0D9003CD360 /* MPOAuthConnection.h */,
++				9BBCB3B81108E0D9003CD360 /* MPOAuthConnection.m */,
++				9BBCB3B91108E0D9003CD360 /* MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m */,
++				9BBCB3BA1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditions.h */,
++				9BBCB3BB1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m */,
++				9BBCB3BC1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.h */,
++				9BBCB3BD1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.m */,
++				9BBCB3BE1108E0D9003CD360 /* MPOAuthCredentialStore.h */,
++				9BBCB3BF1108E0D9003CD360 /* MPOAuthParameterFactory.h */,
++				9BBCB3C01108E0D9003CD360 /* MPOAuthSignatureParameter.h */,
++				9BBCB3C11108E0D9003CD360 /* MPOAuthSignatureParameter.m */,
++				9BBCB3C21108E0D9003CD360 /* MPOAuthURLRequest.h */,
++				9BBCB3C31108E0D9003CD360 /* MPOAuthURLRequest.m */,
++				9BBCB3C41108E0D9003CD360 /* MPOAuthURLResponse.h */,
++				9BBCB3C51108E0D9003CD360 /* MPOAuthURLResponse.m */,
++				9BBCB3C61108E0D9003CD360 /* MPURLRequestParameter.h */,
++				9BBCB3C71108E0D9003CD360 /* MPURLRequestParameter.m */,
++				9BBCB3C81108E0D9003CD360 /* MPWSLRDDiscoverer.h */,
++				9BBCB3C91108E0D9003CD360 /* MPWSLRDDiscoverer.m */,
++				9BBCB3CA1108E0D9003CD360 /* MPWSXRDDocument.h */,
++				9BBCB3CB1108E0D9003CD360 /* MPWSXRDDocument.m */,
++				9BBCB3CC1108E0D9003CD360 /* NSString+URLEscapingAdditions.h */,
++				9BBCB3CD1108E0D9003CD360 /* NSString+URLEscapingAdditions.m */,
++				9BBCB3CE1108E0D9003CD360 /* NSURL+MPURLParameterAdditions.h */,
++				9BBCB3CF1108E0D9003CD360 /* NSURL+MPURLParameterAdditions.m */,
++				9BBCB3D01108E0D9003CD360 /* NSURLResponse+Encoding.h */,
++				9BBCB3D11108E0D9003CD360 /* NSURLResponse+Encoding.m */,
+ 			);
+ 			name = MPOAuth;
+ 			path = ../Source/Framework;
+ 			sourceTree = SOURCE_ROOT;
+ 		};
+-		CBDC0D780F2068A100F30E8F /* Crypto */ = {
+-			isa = PBXGroup;
+-			children = (
+-				CBDC0D790F2068A100F30E8F /* Base64Transcoder.c */,
+-				CBDC0D7A0F2068A100F30E8F /* Base64Transcoder.h */,
+-				CBDC0D7B0F2068A100F30E8F /* hmac.c */,
+-				CBDC0D7C0F2068A100F30E8F /* hmac.h */,
+-				CBDC0D7D0F2068A100F30E8F /* sha1.c */,
+-				CBDC0D7E0F2068A100F30E8F /* sha1.h */,
+-			);
+-			path = Crypto;
+-			sourceTree = "<group>";
+-		};
+ /* End PBXGroup section */
+ 
+ /* Begin PBXNativeTarget section */
+@@ -284,8 +288,7 @@
+ 			files = (
+ 				28AD73600D9D9599002E5188 /* MainWindow.xib in Resources */,
+ 				2899E5600DE3E45000AC0155 /* RootViewController.xib in Resources */,
+-				CBCC930D0F395DE900DBEF2D /* oauthAutoConfig.plist in Resources */,
+-				CBCC93350F3961A200DBEF2D /* UserAuthViewController.xib in Resources */,
++				9BBCB4881108E954003CD360 /* oauthAutoConfig.plist in Resources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -299,23 +302,25 @@
+ 				1D60589B0D05DD56006BFB54 /* main.m in Sources */,
+ 				1D3623260D0F684500981E51 /* MPOAuthMobileAppDelegate.m in Sources */,
+ 				28C286E10D94DF7D0034E888 /* RootViewController.m in Sources */,
+-				CBDC0D9B0F2068A100F30E8F /* Base64Transcoder.c in Sources */,
+-				CBDC0D9C0F2068A100F30E8F /* hmac.c in Sources */,
+-				CBDC0D9D0F2068A100F30E8F /* sha1.c in Sources */,
+-				CBDC0D9E0F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsiPhone.m in Sources */,
+-				CBDC0D9F0F2068A100F30E8F /* MPOAuthAPI+KeychainAdditionsMac.m in Sources */,
+-				CBDC0DA00F2068A100F30E8F /* MPOAuthAPI.m in Sources */,
+-				CBDC0DA10F2068A100F30E8F /* MPOAuthAPIRequestLoader.m in Sources */,
+-				CBDC0DA20F2068A100F30E8F /* MPOAuthConnection.m in Sources */,
+-				CBDC0DA30F2068A100F30E8F /* MPOAuthCredentialConcreteStore.m in Sources */,
+-				CBDC0DA40F2068A100F30E8F /* MPOAuthSignatureParameter.m in Sources */,
+-				CBDC0DA50F2068A100F30E8F /* MPOAuthURLRequest.m in Sources */,
+-				CBDC0DA60F2068A100F30E8F /* MPOAuthURLResponse.m in Sources */,
+-				CBDC0DA70F2068A100F30E8F /* MPURLRequestParameter.m in Sources */,
+-				CBDC0DA80F2068A100F30E8F /* NSString+URLEscapingAdditions.m in Sources */,
+-				CBDC0DA90F2068A100F30E8F /* NSURL+MPURLParameterAdditions.m in Sources */,
+-				CBDC0DAA0F2068A100F30E8F /* NSURLResponse+Encoding.m in Sources */,
+-				CBCC93390F39652300DBEF2D /* UserAuthViewController.m in Sources */,
++				9BBCB3D21108E0D9003CD360 /* Base64Transcoder.c in Sources */,
++				9BBCB3D31108E0D9003CD360 /* MPOAuthAPI.m in Sources */,
++				9BBCB3D41108E0D9003CD360 /* MPOAuthAPIRequestLoader.m in Sources */,
++				9BBCB3D51108E0D9003CD360 /* MPOAuthAuthenticationMethod.m in Sources */,
++				9BBCB3D61108E0D9003CD360 /* MPOAuthAuthenticationMethodAuthExchange.m in Sources */,
++				9BBCB3D71108E0D9003CD360 /* MPOAuthAuthenticationMethodOAuth.m in Sources */,
++				9BBCB3D81108E0D9003CD360 /* MPOAuthConnection.m in Sources */,
++				9BBCB3D91108E0D9003CD360 /* MPOAuthCredentiaIConcreteStore+KeychainAdditionsMac.m in Sources */,
++				9BBCB3DA1108E0D9003CD360 /* MPOAuthCredentialConcreteStore+KeychainAdditionsiPhone.m in Sources */,
++				9BBCB3DB1108E0D9003CD360 /* MPOAuthCredentialConcreteStore.m in Sources */,
++				9BBCB3DC1108E0D9003CD360 /* MPOAuthSignatureParameter.m in Sources */,
++				9BBCB3DD1108E0D9003CD360 /* MPOAuthURLRequest.m in Sources */,
++				9BBCB3DE1108E0D9003CD360 /* MPOAuthURLResponse.m in Sources */,
++				9BBCB3DF1108E0D9003CD360 /* MPURLRequestParameter.m in Sources */,
++				9BBCB3E01108E0D9003CD360 /* MPWSLRDDiscoverer.m in Sources */,
++				9BBCB3E11108E0D9003CD360 /* MPWSXRDDocument.m in Sources */,
++				9BBCB3E21108E0D9003CD360 /* NSString+URLEscapingAdditions.m in Sources */,
++				9BBCB3E31108E0D9003CD360 /* NSURL+MPURLParameterAdditions.m in Sources */,
++				9BBCB3E41108E0D9003CD360 /* NSURLResponse+Encoding.m in Sources */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -332,6 +337,7 @@
+ 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+ 				GCC_PREFIX_HEADER = MPOAuthMobile_Prefix.pch;
+ 				GCC_PREPROCESSOR_DEFINITIONS = "DEBUG=1";
++				HEADER_SEARCH_PATHS = "/usr/include/libxml2/**";
+ 				INFOPLIST_FILE = Info.plist;
+ 				PRODUCT_NAME = MPOAuthMobile;
+ 			};
+Index: MPOAuthMobile/RootViewController.xib
+===================================================================
+--- MPOAuthMobile/RootViewController.xib	(revision 122)
++++ MPOAuthMobile/RootViewController.xib	(working copy)
+@@ -2,9 +2,9 @@
+ <archive type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="7.03">
+ 	<data>
+ 		<int key="IBDocument.SystemTarget">528</int>
+-		<string key="IBDocument.SystemVersion">9G55</string>
+-		<string key="IBDocument.InterfaceBuilderVersion">677</string>
+-		<string key="IBDocument.AppKitVersion">949.43</string>
++		<string key="IBDocument.SystemVersion">9L31a</string>
++		<string key="IBDocument.InterfaceBuilderVersion">680</string>
++		<string key="IBDocument.AppKitVersion">949.54</string>
+ 		<string key="IBDocument.HIToolboxVersion">353.00</string>
+ 		<object class="NSMutableArray" key="IBDocument.EditedObjectIDs">
+ 			<bool key="EncodedWithXMLCoder">YES</bool>
+@@ -39,7 +39,7 @@
+ 					<object class="IBUITextView" id="808549155">
+ 						<reference key="NSNextResponder" ref="137057307"/>
+ 						<int key="NSvFlags">274</int>
+-						<string key="NSFrame">{{20, 52}, {280, 207}}</string>
++						<string key="NSFrame">{{20, 98}, {280, 223}}</string>
+ 						<reference key="NSSuperview" ref="137057307"/>
+ 						<bool key="IBUIOpaque">NO</bool>
+ 						<bool key="IBUIClipsSubviews">YES</bool>
+@@ -48,12 +48,14 @@
+ 						<bool key="IBUIDelaysContentTouches">NO</bool>
+ 						<bool key="IBUICanCancelContentTouches">NO</bool>
+ 						<bool key="IBUIBouncesZoom">NO</bool>
+-						<string key="IBUIText">Lorem ipsum dolor sit er elit lamet, consectetaur cillium adipisicing pecu, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Nam liber te conscient to factor tum poen legum odioque civiuda.</string>
++						<bool key="IBUIEditable">NO</bool>
++						<string key="IBUIText"/>
+ 						<object class="NSFont" key="IBUIFont">
+ 							<string key="NSName">Helvetica</string>
+ 							<double key="NSSize">1.400000e+01</double>
+ 							<int key="NSfFlags">16</int>
+ 						</object>
++						<object class="IBUITextInputTraits" key="IBUITextInputTraits"/>
+ 					</object>
+ 					<object class="IBUITextField" id="502895612">
+ 						<reference key="NSNextResponder" ref="137057307"/>
+@@ -65,6 +67,7 @@
+ 						<int key="IBUIContentVerticalAlignment">0</int>
+ 						<string key="IBUIText"/>
+ 						<int key="IBUIBorderStyle">3</int>
++						<string key="IBUIPlaceholder">API Method</string>
+ 						<object class="NSColor" key="IBUITextColor">
+ 							<int key="NSColorSpace">3</int>
+ 							<bytes key="NSWhite">MAA</bytes>
+@@ -72,13 +75,88 @@
+ 								<int key="NSID">2</int>
+ 							</object>
+ 						</object>
+-						<bool key="IBUIClearsOnBeginEditing">YES</bool>
+ 						<bool key="IBUIAdjustsFontSizeToFit">YES</bool>
+ 						<float key="IBUIMinimumFontSize">1.700000e+01</float>
+-						<object class="IBUITextInputTraits" key="IBUITextInputTraits"/>
++						<object class="IBUITextInputTraits" key="IBUITextInputTraits">
++							<int key="IBUIAutocorrectionType">1</int>
++							<int key="IBUIReturnKeyType">7</int>
++						</object>
++						<int key="IBUIClearButtonMode">1</int>
+ 					</object>
++					<object class="IBUITextField" id="181690793">
++						<reference key="NSNextResponder" ref="137057307"/>
++						<int key="NSvFlags">292</int>
++						<string key="NSFrame">{{20, 59}, {280, 31}}</string>
++						<reference key="NSSuperview" ref="137057307"/>
++						<bool key="IBUIOpaque">NO</bool>
++						<bool key="IBUIClearsContextBeforeDrawing">NO</bool>
++						<int key="IBUIContentVerticalAlignment">0</int>
++						<string key="IBUIText"/>
++						<int key="IBUIBorderStyle">3</int>
++						<string type="base64-UTF8" key="IBUIPlaceholder">UXVlcnkgU3RyaW5nIChpZS4ga2V5MT12YWwxJmtleTI9dmFsMiYuLi4pA</string>
++						<object class="NSColor" key="IBUITextColor">
++							<int key="NSColorSpace">3</int>
++							<bytes key="NSWhite">MAA</bytes>
++							<reference key="NSCustomColorSpace" ref="481676137"/>
++						</object>
++						<bool key="IBUIAdjustsFontSizeToFit">YES</bool>
++						<float key="IBUIMinimumFontSize">1.700000e+01</float>
++						<object class="IBUITextInputTraits" key="IBUITextInputTraits">
++							<int key="IBUIAutocorrectionType">1</int>
++							<int key="IBUIReturnKeyType">7</int>
++						</object>
++						<int key="IBUIClearButtonMode">1</int>
++					</object>
++					<object class="IBUIButton" id="801987408">
++						<reference key="NSNextResponder" ref="137057307"/>
++						<int key="NSvFlags">292</int>
++						<string key="NSFrame">{{20, 329}, {136, 37}}</string>
++						<reference key="NSSuperview" ref="137057307"/>
++						<bool key="IBUIOpaque">NO</bool>
++						<bool key="IBUIClearsContextBeforeDrawing">NO</bool>
++						<int key="IBUIContentHorizontalAlignment">0</int>
++						<int key="IBUIContentVerticalAlignment">0</int>
++						<object class="NSFont" key="IBUIFont" id="1065047662">
++							<string key="NSName">Helvetica-Bold</string>
++							<double key="NSSize">1.500000e+01</double>
++							<int key="NSfFlags">16</int>
++						</object>
++						<int key="IBUIButtonType">1</int>
++						<string key="IBUINormalTitle">Clear Credentials</string>
++						<object class="NSColor" key="IBUIHighlightedTitleColor" id="935371392">
++							<int key="NSColorSpace">3</int>
++							<bytes key="NSWhite">MQA</bytes>
++						</object>
++						<object class="NSColor" key="IBUINormalTitleColor">
++							<int key="NSColorSpace">1</int>
++							<bytes key="NSRGB">MC4xOTYwNzg0MyAwLjMwOTgwMzkzIDAuNTIxNTY4NjYAA</bytes>
++						</object>
++						<object class="NSColor" key="IBUINormalTitleShadowColor" id="970308855">
++							<int key="NSColorSpace">3</int>
++							<bytes key="NSWhite">MC41AA</bytes>
++						</object>
++					</object>
++					<object class="IBUIButton" id="988048111">
++						<reference key="NSNextResponder" ref="137057307"/>
++						<int key="NSvFlags">292</int>
++						<string key="NSFrame">{{164, 329}, {136, 37}}</string>
++						<reference key="NSSuperview" ref="137057307"/>
++						<bool key="IBUIOpaque">NO</bool>
++						<bool key="IBUIClearsContextBeforeDrawing">NO</bool>
++						<int key="IBUIContentHorizontalAlignment">0</int>
++						<int key="IBUIContentVerticalAlignment">0</int>
++						<reference key="IBUIFont" ref="1065047662"/>
++						<int key="IBUIButtonType">1</int>
++						<string key="IBUINormalTitle">Reauthenticate</string>
++						<reference key="IBUIHighlightedTitleColor" ref="935371392"/>
++						<object class="NSColor" key="IBUINormalTitleColor">
++							<int key="NSColorSpace">1</int>
++							<bytes key="NSRGB">MC4xOTYwNzg0MyAwLjMwOTgwMzkzIDAuNTIxNTY4NjYAA</bytes>
++						</object>
++						<reference key="IBUINormalTitleShadowColor" ref="970308855"/>
++					</object>
+ 				</object>
+-				<string key="NSFrameSize">{320, 460}</string>
++				<string key="NSFrameSize">{320, 386}</string>
+ 				<reference key="NSSuperview"/>
+ 				<object class="NSColor" key="IBUIBackgroundColor">
+ 					<int key="NSColorSpace">3</int>
+@@ -86,6 +164,8 @@
+ 					<reference key="NSCustomColorSpace" ref="481676137"/>
+ 				</object>
+ 				<bool key="IBUIClearsContextBeforeDrawing">NO</bool>
++				<object class="IBUISimulatedStatusBarMetrics" key="IBUISimulatedStatusBarMetrics"/>
++				<object class="IBUISimulatedNavigationBarMetrics" key="IBUISimulatedTopBarMetrics"/>
+ 			</object>
+ 		</object>
+ 		<object class="IBObjectContainer" key="IBDocument.Objects">
+@@ -101,14 +181,6 @@
+ 				</object>
+ 				<object class="IBConnectionRecord">
+ 					<object class="IBCocoaTouchOutletConnection" key="connection">
+-						<string key="label">delegate</string>
+-						<reference key="source" ref="502895612"/>
+-						<reference key="destination" ref="372490531"/>
+-					</object>
+-					<int key="connectionID">18</int>
+-				</object>
+-				<object class="IBConnectionRecord">
+-					<object class="IBCocoaTouchOutletConnection" key="connection">
+ 						<string key="label">textOutput</string>
+ 						<reference key="source" ref="372490531"/>
+ 						<reference key="destination" ref="808549155"/>
+@@ -123,6 +195,32 @@
+ 					</object>
+ 					<int key="connectionID">20</int>
+ 				</object>
++				<object class="IBConnectionRecord">
++					<object class="IBCocoaTouchEventConnection" key="connection">
++						<string key="label">clearCredentials</string>
++						<reference key="source" ref="801987408"/>
++						<reference key="destination" ref="372490531"/>
++						<int key="IBEventType">7</int>
++					</object>
++					<int key="connectionID">25</int>
++				</object>
++				<object class="IBConnectionRecord">
++					<object class="IBCocoaTouchEventConnection" key="connection">
++						<string key="label">reauthenticate</string>
++						<reference key="source" ref="988048111"/>
++						<reference key="destination" ref="372490531"/>
++						<int key="IBEventType">7</int>
++					</object>
++					<int key="connectionID">26</int>
++				</object>
++				<object class="IBConnectionRecord">
++					<object class="IBCocoaTouchOutletConnection" key="connection">
++						<string key="label">parametersInput</string>
++						<reference key="source" ref="372490531"/>
++						<reference key="destination" ref="181690793"/>
++					</object>
++					<int key="connectionID">28</int>
++				</object>
+ 			</object>
+ 			<object class="IBMutableOrderedSet" key="objectRecords">
+ 				<object class="NSArray" key="orderedObjects">
+@@ -153,6 +251,9 @@
+ 							<bool key="EncodedWithXMLCoder">YES</bool>
+ 							<reference ref="808549155"/>
+ 							<reference ref="502895612"/>
++							<reference ref="801987408"/>
++							<reference ref="988048111"/>
++							<reference ref="181690793"/>
+ 						</object>
+ 						<reference key="parent" ref="360949347"/>
+ 					</object>
+@@ -166,6 +267,21 @@
+ 						<reference key="object" ref="502895612"/>
+ 						<reference key="parent" ref="137057307"/>
+ 					</object>
++					<object class="IBObjectRecord">
++						<int key="objectID">21</int>
++						<reference key="object" ref="801987408"/>
++						<reference key="parent" ref="137057307"/>
++					</object>
++					<object class="IBObjectRecord">
++						<int key="objectID">23</int>
++						<reference key="object" ref="988048111"/>
++						<reference key="parent" ref="137057307"/>
++					</object>
++					<object class="IBObjectRecord">
++						<int key="objectID">27</int>
++						<reference key="object" ref="181690793"/>
++						<reference key="parent" ref="137057307"/>
++					</object>
+ 				</object>
+ 			</object>
+ 			<object class="NSMutableDictionary" key="flattenedProperties">
+@@ -178,15 +294,21 @@
+ 					<string>14.IBPluginDependency</string>
+ 					<string>15.IBPluginDependency</string>
+ 					<string>16.IBPluginDependency</string>
++					<string>21.IBPluginDependency</string>
++					<string>23.IBPluginDependency</string>
++					<string>27.IBPluginDependency</string>
+ 				</object>
+ 				<object class="NSMutableArray" key="dict.values">
+ 					<bool key="EncodedWithXMLCoder">YES</bool>
+ 					<string>RootViewController</string>
+ 					<string>UIResponder</string>
+-					<string>{{308, 231}, {320, 460}}</string>
++					<string>{{543, 253}, {320, 480}}</string>
+ 					<string>com.apple.InterfaceBuilder.IBCocoaTouchPlugin</string>
+ 					<string>com.apple.InterfaceBuilder.IBCocoaTouchPlugin</string>
+ 					<string>com.apple.InterfaceBuilder.IBCocoaTouchPlugin</string>
++					<string>com.apple.InterfaceBuilder.IBCocoaTouchPlugin</string>
++					<string>com.apple.InterfaceBuilder.IBCocoaTouchPlugin</string>
++					<string>com.apple.InterfaceBuilder.IBCocoaTouchPlugin</string>
+ 				</object>
+ 			</object>
+ 			<object class="NSMutableDictionary" key="unlocalizedProperties">
+@@ -209,7 +331,7 @@
+ 				</object>
+ 			</object>
+ 			<nil key="sourceID"/>
+-			<int key="maxID">20</int>
++			<int key="maxID">28</int>
+ 		</object>
+ 		<object class="IBClassDescriber" key="IBDocument.Classes">
+ 			<object class="NSMutableArray" key="referencedPartialClassDescriptions">
+@@ -217,28 +339,45 @@
+ 				<object class="IBPartialClassDescription">
+ 					<string key="className">RootViewController</string>
+ 					<string key="superclassName">UIViewController</string>
+-					<object class="IBClassDescriptionSource" key="sourceIdentifier">
+-						<string key="majorKey">IBProjectSource</string>
+-						<string key="minorKey">Classes/RootViewController.h</string>
++					<object class="NSMutableDictionary" key="actions">
++						<bool key="EncodedWithXMLCoder">YES</bool>
++						<object class="NSMutableArray" key="dict.sortedKeys">
++							<bool key="EncodedWithXMLCoder">YES</bool>
++							<string>clearCredentials</string>
++							<string>reauthenticate</string>
++						</object>
++						<object class="NSMutableArray" key="dict.values">
++							<bool key="EncodedWithXMLCoder">YES</bool>
++							<string>id</string>
++							<string>id</string>
++						</object>
+ 					</object>
+-				</object>
+-				<object class="IBPartialClassDescription">
+-					<string key="className">RootViewController</string>
+-					<string key="superclassName">UIViewController</string>
+ 					<object class="NSMutableDictionary" key="outlets">
+ 						<bool key="EncodedWithXMLCoder">YES</bool>
+ 						<object class="NSMutableArray" key="dict.sortedKeys">
+ 							<bool key="EncodedWithXMLCoder">YES</bool>
+ 							<string>methodInput</string>
+-							<string>textOutput</string>
++							<string>parametersInput</string>
+ 						</object>
+ 						<object class="NSMutableArray" key="dict.values">
+ 							<bool key="EncodedWithXMLCoder">YES</bool>
+ 							<string>UITextField</string>
+-							<string>UITextView</string>
++							<string>UITextField</string>
+ 						</object>
+ 					</object>
+ 					<object class="IBClassDescriptionSource" key="sourceIdentifier">
++						<string key="majorKey">IBProjectSource</string>
++						<string key="minorKey">Classes/RootViewController.h</string>
++					</object>
++				</object>
++				<object class="IBPartialClassDescription">
++					<string key="className">RootViewController</string>
++					<string key="superclassName">UIViewController</string>
++					<object class="NSMutableDictionary" key="outlets">
++						<string key="NS.key.0">textOutput</string>
++						<string key="NS.object.0">UITextView</string>
++					</object>
++					<object class="IBClassDescriptionSource" key="sourceIdentifier">
+ 						<string key="majorKey">IBUserSource</string>
+ 						<string key="minorKey"/>
+ 					</object>
+@@ -248,5 +387,6 @@
+ 		<int key="IBDocument.localizationMode">0</int>
+ 		<string key="IBDocument.LastKnownRelativeProjectPath">MPOAuthMobile.xcodeproj</string>
+ 		<int key="IBDocument.defaultPropertyAccessControl">3</int>
++		<string key="IBCocoaTouchPluginVersion">3.1</string>
+ 	</data>
+ </archive>
+Index: MPOAuthMobile/Classes/MPOAuthMobileAppDelegate.h
+===================================================================
+--- MPOAuthMobile/Classes/MPOAuthMobileAppDelegate.h	(revision 122)
++++ MPOAuthMobile/Classes/MPOAuthMobileAppDelegate.h	(working copy)
+@@ -8,14 +8,18 @@
+ 
+ #import <UIKit/UIKit.h>
+ #import "MPOAuthAPI.h"
++#import "MPOAuthAuthenticationMethodOAuth.h"
+ 
+-@interface MPOAuthMobileAppDelegate : NSObject <UIApplicationDelegate, MPOAuthAPIDelegate> {
+-    UIWindow *window;
++@interface MPOAuthMobileAppDelegate : NSObject <UIApplicationDelegate, MPOAuthAuthenticationMethodOAuthDelegate> {
++	UIWindow *window;
+     UINavigationController *navigationController;
++	
++	NSString *_oauthVerifier;
+ }
+ 
+ @property (nonatomic, retain) IBOutlet UIWindow *window;
+ @property (nonatomic, retain) IBOutlet UINavigationController *navigationController;
++@property (nonatomic, copy) NSString *oauthVerifier;
+ 
+ @end
+ 
+Index: MPOAuthMobile/Classes/RootViewController.h
+===================================================================
+--- MPOAuthMobile/Classes/RootViewController.h	(revision 122)
++++ MPOAuthMobile/Classes/RootViewController.h	(working copy)
+@@ -13,7 +13,14 @@
+ @interface RootViewController : UIViewController {
+ 	MPOAuthAPI	*_oauthAPI;
+ 	UITextField *methodInput;
++	UITextField *parametersInput;
+ 	UITextView	*textOutput;
+ }
+ 
++@property (nonatomic, retain) IBOutlet UITextField *methodInput;
++@property (nonatomic, retain) IBOutlet UITextField *parametersInput;
++
++- (IBAction)clearCredentials;
++- (IBAction)reauthenticate;
++
+ @end
+Index: MPOAuthMobile/Classes/MPOAuthMobileAppDelegate.m
+===================================================================
+--- MPOAuthMobile/Classes/MPOAuthMobileAppDelegate.m	(revision 122)
++++ MPOAuthMobile/Classes/MPOAuthMobileAppDelegate.m	(working copy)
+@@ -6,16 +6,18 @@
+ //  Copyright matrixPointer 2008. All rights reserved.
+ //
+ 
++#import "MPOAuthAuthenticationMethodOAuth.h"
+ #import "MPOAuthMobileAppDelegate.h"
+ #import "RootViewController.h"
+-#import "UserAuthViewController.h"
+ 
++#import "MPURLRequestParameter.h"
++
+ @implementation MPOAuthMobileAppDelegate
+ 
+ @synthesize window;
+ @synthesize navigationController;
++@synthesize oauthVerifier = _oauthVerifier;
+ 
+-
+ - (void)applicationDidFinishLaunching:(UIApplication *)application {
+ 	
+ 	// Configure and show the window
+@@ -43,18 +45,22 @@
+ 	return [NSURL URLWithString:@"x-com-mpoauth-mobile://success"];
+ }
+ 
++- (NSString *)oauthVerifierForCompletedUserAuthorization {
++	return _oauthVerifier;
++}
++
+ - (BOOL)automaticallyRequestAuthenticationFromURL:(NSURL *)inAuthURL withCallbackURL:(NSURL *)inCallbackURL {
+-	UserAuthViewController *userAuthViewController = [[UserAuthViewController alloc] initWithURL:inAuthURL];
+-	[navigationController pushViewController:userAuthViewController animated:YES];
+-	[userAuthViewController release];
+-	
+-	return NO;
++	return YES;
+ }
+-
++ 
+ - (BOOL)application:(UIApplication *)application handleOpenURL:(NSURL *)url {
+-	// we're only setup to handle one URL so this pops the authentication webview
+-	[navigationController popViewControllerAnimated:YES];
++	// the url is the callback url with the query string including oauth_token and oauth_verifier in 1.0a
++	if ([[url host] isEqualToString:@"success"] && [url query].length > 0) {
++		NSDictionary *oauthParameters = [MPURLRequestParameter parameterDictionaryFromString:[url query]];
++		_oauthVerifier = [oauthParameters objectForKey:@"oauth_verifier"];
++	}
++	 
+ 	return YES;
+ }
+-
++ 
+ @end
+Index: MPOAuthMobile/Classes/RootViewController.m
+===================================================================
+--- MPOAuthMobile/Classes/RootViewController.m	(revision 122)
++++ MPOAuthMobile/Classes/RootViewController.m	(working copy)
+@@ -9,26 +9,34 @@
+ #import "RootViewController.h"
+ #import "MPOAuthMobileAppDelegate.h"
+ #import "MPOAuthAPI.h"
++#import "MPURLRequestParameter.h"
+ 
+ #define kConsumerKey		@"key"
+ #define kConsumerSecret		@"secret"
+ 
+-
+ @implementation RootViewController
+ 
++@synthesize methodInput;
++@synthesize parametersInput;
++
+ - (void)dealloc {
+     [super dealloc];
+ }
+ 
+ - (void)viewDidLoad {
+     [super viewDidLoad];
+-	[self.navigationItem setPrompt:@"Performing Request Token Request"];
++	//[self.navigationItem setPrompt:@"Performing Request Token Request"];
++	[self.navigationItem setPrompt:@""];
+ 	[self.navigationItem setTitle:@"OAuth Test"];
+-	[methodInput addTarget:self action:@selector(methodEntered:) forControlEvents:UIControlEventEditingDidEndOnExit];
++	[self.methodInput addTarget:self action:@selector(methodEntered:) forControlEvents:UIControlEventEditingDidEndOnExit];
++	[self.parametersInput addTarget:self action:@selector(methodEntered:) forControlEvents:UIControlEventEditingDidEndOnExit];
+ 	
+ 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(requestTokenReceived:) name:MPOAuthNotificationRequestTokenReceived object:nil];
+ 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(accessTokenReceived:) name:MPOAuthNotificationAccessTokenReceived object:nil];
+-	
++
++	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(errorOccurred:) name:MPOAuthNotificationAccessTokenRejected object:nil];
++	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(errorOccurred:) name:MPOAuthNotificationRequestTokenRejected object:nil];
++	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(errorOccurred:) name:MPOAuthNotificationErrorHasOccurred object:nil];
+ }
+ 
+ - (void)viewDidAppear:(BOOL)animated {
+@@ -37,13 +45,15 @@
+ 									 kConsumerSecret, kMPOAuthCredentialConsumerSecret,
+ 									 nil];
+ 		_oauthAPI = [[MPOAuthAPI alloc] initWithCredentials:credentials
+-										  authenticationURL:[NSURL URLWithString:@"https://example.com/auth/"]
+-												 andBaseURL:[NSURL URLWithString:@"http://example.com/api/"]];
++										  authenticationURL:[NSURL URLWithString:@"http://www.meetup.com/authorize/"]
++												 andBaseURL:[NSURL URLWithString:@"http://api.meetup.com/"]
++												  autoStart:NO];
+ 		
+-		_oauthAPI.delegate = (id <MPOAuthAPIDelegate>)[UIApplication sharedApplication].delegate;
+-	} else {
+-		[_oauthAPI authenticate];
++		// XXX - if using MPOAuthAuthenticationMethodAuthExchange (4sq), no need for this delegate
++		((MPOAuthAuthenticationMethodOAuth *)_oauthAPI.authenticationMethod).delegate = (id <MPOAuthAuthenticationMethodOAuthDelegate>)[UIApplication sharedApplication].delegate;
+ 	}
++
++	[_oauthAPI authenticate];
+ }
+ 
+ - (void)requestTokenReceived:(NSNotification *)inNotification {
+@@ -54,13 +64,38 @@
+ 	[self.navigationItem setPrompt:@"Access Token Received"];
+ }
+ 
++- (void)errorOccurred:(NSNotification *)inNotification {
++	[self.navigationItem setPrompt:@"Error Occurred"];
++	textOutput.text = [[inNotification userInfo] objectForKey:@"oauth_problem"];
++}
++
+ - (void)_methodLoadedFromURL:(NSURL *)inURL withResponseString:(NSString *)inString {
+ 	textOutput.text = inString;
+ }
+ 
+-- (void)methodEntered:(UITextField *)inTextField {
+-	[_oauthAPI performMethod:inTextField.text withTarget:self andAction:@selector(_methodLoadedFromURL:withResponseString:)];
++- (void)methodEntered:(UITextField *)aTextField {
++	NSString *method = methodInput.text;
++	NSString *paramsString = parametersInput.text;
++	
++	NSArray *params = nil;
++	if (paramsString.length > 0) {
++		params = [MPURLRequestParameter parametersFromString:paramsString];
++	}
++	
++	[_oauthAPI performMethod:method atURL:_oauthAPI.baseURL withParameters:params withTarget:self andAction:@selector(_methodLoadedFromURL:withResponseString:)];
+ }
+ 
++- (void)clearCredentials {
++	[self.navigationItem setPrompt:@"Credentials Cleared"];
++	textOutput.text = @"";
++	[_oauthAPI discardCredentials];
++}
++
++- (void)reauthenticate {
++	[self.navigationItem setPrompt:@"Reauthenticating User"];
++	textOutput.text = @"";
++	[_oauthAPI authenticate];	
++}
++
+ @end
+ 
+Index: Resources/oauthAutoConfig.plist
+===================================================================
+--- Resources/oauthAutoConfig.plist	(revision 122)
++++ Resources/oauthAutoConfig.plist	(working copy)
+@@ -2,6 +2,15 @@
+ <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+ <plist version="1.0">
+ <dict>
++	<key>.meetup.com</key>
++	<dict>
++		<key>MPOAuthRequestTokenURL</key>
++		<string>http://www.meetup.com/oauth/request/</string>
++		<key>MPOAuthUserAuthorizationURL</key>
++		<string>http://www.meetup.com/authorize/</string>
++		<key>MPOAuthAccessTokenURL</key>
++		<string>http://www.meetup.com/oauth/access/</string>
++	</dict>
+ 	<key>.yahoo.com</key>
+ 	<dict>
+ 		<key>MPOAuthRequestTokenURL</key>
