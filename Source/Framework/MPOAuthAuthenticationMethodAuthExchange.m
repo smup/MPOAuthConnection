@@ -40,7 +40,6 @@
 	id <MPOAuthCredentialStore> credentials = [self.oauthAPI credentials];
 	
 	if (!credentials.accessToken && !credentials.accessTokenSecret) {
-		MUPLog(@"--> Performing Access Token Request: %@", self.oauthGetAccessTokenURL);
 		
 		NSMutableArray *params = [[NSMutableArray alloc] initWithCapacity:2];
 		
@@ -106,8 +105,6 @@
 }
 
 - (void)_performedLoad:(MPOAuthAPIRequestLoader *)inLoader receivingData:(NSData *)inData {
-//	MUPLog(@"loaded %@, and got:\n %@", inLoader, inData);
-	
 	// make sure string is xml, if not, then throw an error
     NSData *data = [[inLoader responseString] dataUsingEncoding:NSUTF8StringEncoding];
     NSError *error = nil;

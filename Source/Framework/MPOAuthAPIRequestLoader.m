@@ -126,22 +126,18 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 #pragma mark -
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-		MUPLog(@"%p: [%@ %@] %@, %@", self, NSStringFromClass([self class]), NSStringFromSelector(_cmd), connection, error);
     @try {
         if ([_target respondsToSelector:@selector(loader:didFailWithError:)]) {
             [_target performSelector: @selector(loader:didFailWithError:) withObject: self withObject: error];
         }
     }
     @catch (NSException *exception) {
-        MUPLog(@"main: Caught %@: %@", [exception name], [exception reason]);
-        [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ 
+        [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__
                                   withTarget:_target withEvent:nil withDict:nil sendReport:YES];     
     }
 }
 
 - (void)connection:(NSURLConnection *)connection didSendBodyData:(NSInteger)bytesWritten totalBytesWritten:(NSInteger)totalBytesWritten totalBytesExpectedToWrite:(NSInteger)totalBytesExpectedToWrite {
-	NSLog( @"bytesWritten = %d, totalBytesWritten = %d, totalBytesExpectedToWrite = %d", bytesWritten, totalBytesWritten, totalBytesExpectedToWrite);
-
     @try {
         if ([_target respondsToSelector:@selector(loader:didSendBodyData:)]) {
             NSArray *bodyData = [[NSArray alloc] initWithObjects:[NSNumber numberWithInt:bytesWritten], [NSNumber numberWithInt:totalBytesWritten], [NSNumber numberWithInt:totalBytesExpectedToWrite], nil];
@@ -151,14 +147,11 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
         }
     }
     @catch (NSException *exception) {
-        MUPLog(@"main: Caught %@: %@", [exception name], [exception reason]);
-        [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];     
+        [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];
     }
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
-    MUPLog(@"didReceiveResponse %@: %@", [[response URL] description],
-          [[(NSHTTPURLResponse*)response allHeaderFields] description]);
 	self.oauthResponse.urlResponse = response;
 }
 
@@ -167,7 +160,6 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge {
-	MUPLog(@"%@", NSStringFromSelector(_cmd));
 	
 	NSArray *trustedHosts = [NSArray arrayWithObjects:@"api.dev.meetup.com", @"api.meetup.com", nil];
 	
@@ -183,7 +175,6 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 }
 
 - (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)redirectResponse {
-	MUPLog( @"[%@ %@]: %@, %@", NSStringFromClass([self class]), NSStringFromSelector(_cmd), request, redirectResponse);
 	return request;
 }
 
@@ -196,8 +187,7 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
             }
         }
         @catch (NSException *exception) {
-            MUPLog(@"main: Caught %@: %@", [exception name], [exception reason]);
-            [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];     
+            [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];
         }
         [_error release];
         _error = nil;
@@ -236,7 +226,6 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 		
 		if ([response length] > 13 && [[response substringToIndex:13] isEqualToString:@"oauth_problem"]) {
 			NSString *aParameterValue = nil;
-			MUPLog(@"oauthProblem = %@", foundParameters);
 			
 			if ([foundParameters count] && (aParameterValue = [foundParameters objectForKey:@"oauth_problem"])) {
 				if ([aParameterValue isEqualToString:@"token_rejected"]) {
@@ -259,7 +248,6 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 			}
 		} else if ([response length] > 11 && [[response substringToIndex:11] isEqualToString:@"oauth_token"]) {
 			NSString *aParameterValue = nil;
-			MUPLog(@"foundParameters = %@", foundParameters);
 
 			if ([foundParameters count] && (aParameterValue = [foundParameters objectForKey:@"oauth_token"])) {
 				if (!self.credentials.requestToken && !self.credentials.accessToken) {

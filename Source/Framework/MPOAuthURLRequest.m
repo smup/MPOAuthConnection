@@ -71,7 +71,6 @@ static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
 	[aRequest setHTTPMethod:self.HTTPMethod];
 	
 	// timeout if connection idles for too long
-//    CGFloat randomTimeout = (((CGFloat) rand()) / RAND_MAX) * 20.0f;
 	[aRequest setTimeoutInterval:15.0f];
     
     [aRequest setValue:@"utf-8" forHTTPHeaderField:@"Accept-Charset"];
@@ -79,8 +78,6 @@ static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
 	if ([[self HTTPMethod] isEqualToString:@"GET"] && [self.parameters count]) 
     {
 		NSString *urlString = [NSString stringWithFormat:@"%@?%@", [self.url absoluteString], parameterString];
-//		MUPLog( @"urlString - %@", urlString);
-		
 		[aRequest setURL:[NSURL URLWithString:urlString]];
 	} 
     
@@ -88,11 +85,7 @@ static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
     else if ([[self HTTPMethod] isEqualToString:@"DELETE"] && [self.parameters count])     
     {
         NSString *urlString = [NSString stringWithFormat:@"%@?%@", [self.url absoluteString], parameterString];
-//        MUPLog( @"urlString - %@", urlString);
 		[aRequest setURL:[NSURL URLWithString:urlString]];
-        
-         
-         
     }
     
     else if ([[self HTTPMethod] isEqualToString:@"POST"])
@@ -127,7 +120,6 @@ static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
 							  dataUsingEncoding:NSUTF8StringEncoding]];
 			
 			NSString *urlString = [NSString stringWithFormat:@"%@?%@", [self.url absoluteString], parameterString];
-			MUPLog( @"urlString - %@", urlString);
 			
 			[aRequest setURL:[NSURL URLWithString:urlString]];
 			[aRequest setValue:[NSString stringWithFormat:@"%d", [body length]] forHTTPHeaderField:@"Content-Length"];
@@ -136,8 +128,6 @@ static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
 		}
 		else {
 			NSData *postData = [parameterString dataUsingEncoding:NSUTF8StringEncoding];
-			MUPLog(@"urlString - %@", self.url);
-			MUPLog(@"postDataString - %@", parameterString);
 		
 			[aRequest setURL:self.url];
 			[aRequest setValue:[NSString stringWithFormat:@"%d", [postData length]] forHTTPHeaderField:@"Content-Length"];
@@ -150,15 +140,11 @@ static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
         
 	}
 	
-    
-     
-     MUPLog(@"Headers - %@", [aRequest.allHTTPHeaderFields description]);
     [self.customHttpHeaders enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
         [aRequest setValue:obj forHTTPHeaderField:key];
     }];
 	
 	_urlRequest = aRequest;
-//	[aRequest release];
 		
 	return aRequest;
 }

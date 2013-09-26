@@ -293,10 +293,6 @@ NSString *kMPOAuthSignatureMethod					= @"kMPOAuthSignatureMethod";
 #pragma mark -
 #pragma mark - Private APIs -
 
-- (void)_performedLoad:(MPOAuthAPIRequestLoader *)inLoader receivingData:(NSData *)inData 
-{
-    
-  //NSLog(@"loaded %@, and got %@", inLoader, inData);
-}
+- (void)_performedLoad:(MPOAuthAPIRequestLoader *)inLoader receivingData:(NSData *)inData {}
 
 @end

@@ -97,8 +97,6 @@ NSString * const MPOAuthCredentialVerifierKey				= @"oauth_verifier";
 
 - (void)_authenticationRequestForRequestToken {
 	if (self.oauthRequestTokenURL) {
-		MUPLog(@"--> Performing Request Token Request: %@", self.oauthRequestTokenURL);
-		
 		// Append the oauth_callbackUrl parameter for requesting the request token
 		MPURLRequestParameter *callbackParameter = nil;
 		if (self.delegate && [self.delegate respondsToSelector: @selector(callbackURLForCompletedUserAuthorization)]) {
@@ -133,7 +131,7 @@ NSString * const MPOAuthCredentialVerifierKey				= @"oauth_verifier";
 	BOOL delegateWantsToBeInvolved = [self.delegate respondsToSelector:@selector(automaticallyRequestAuthenticationFromURL:withCallbackURL:)];
 	
 	if (!delegateWantsToBeInvolved || (delegateWantsToBeInvolved && [self.delegate automaticallyRequestAuthenticationFromURL:userAuthURL withCallbackURL:callbackURL])) {
-		MUPLog(@"--> Automatically Performing User Auth Request: %@", userAuthURL);
+
 		[self _authenticationRequestForUserPermissionsConfirmationAtURL:userAuthURL];
 	}
 }
@@ -166,7 +164,6 @@ NSString * const MPOAuthCredentialVerifierKey				= @"oauth_verifier";
 	}
 	
 	if (self.oauthGetAccessTokenURL) {
-		MUPLog(@"--> Performing Access Token Request: %@", self.oauthGetAccessTokenURL);
 		[self.oauthAPI performMethod:nil atURL:self.oauthGetAccessTokenURL withParameters:params withTarget:self andAction:nil];
 	}
 	
@@ -220,8 +217,7 @@ NSString * const MPOAuthCredentialVerifierKey				= @"oauth_verifier";
 #pragma mark -
 #pragma mark - Private APIs -
 
-- (void)_performedLoad:(MPOAuthAPIRequestLoader *)inLoader receivingData:(NSData *)inData {
-	//	NSLog(@"loaded %@, and got %@", inLoader, inData);
-}
+- (void)_performedLoad:(MPOAuthAPIRequestLoader *)inLoader receivingData:(NSData *)inData
+{}
 
 @end
