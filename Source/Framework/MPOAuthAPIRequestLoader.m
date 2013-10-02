@@ -127,7 +127,7 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
     @try {
-        if ([_target respondsToSelector:@selector(loader:didFailWithError:)]) {
+            if ([_target respondsToSelector:@selector(loader:didFailWithError:)]) {
             [_target performSelector: @selector(loader:didFailWithError:) withObject: self withObject: error];
         }
     }
