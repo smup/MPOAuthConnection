@@ -10,8 +10,8 @@ Pod::Spec.new do |s|
 
   s.author       = "Karl Adam"
   s.platform     = :ios, '5.0'
-  s.source       = { :git => "https://github.com/meetup/MPOAuthConnection.git", :commit => "c4737bd1c1b2fbb34393041a8239c1e4b616d476" }
-  s.source_files  = 'Source/Framework/*.{h,m}', 'Source/Framework/Crypto/Base64Transcoder.{h,m}'
+  s.source       = { :git => "https://github.com/meetup/MPOAuthConnection.git", :tag => s.version.to_s }
+  s.source_files  = 'Source/Framework/*.{h,m,c}'
   
   s.framework = 'Security'
   s.libraries = 'xml2'
