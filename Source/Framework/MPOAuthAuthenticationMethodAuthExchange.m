@@ -6,14 +6,11 @@
 //  Copyright 2009 matrixPointer. All rights reserved.
 //
 
-#import <FacebookSDK/FacebookSDK.h>
 #import "MPOAuthAuthenticationMethodAuthExchange.h"
 #import "MPOAuthAPI.h"
 #import "MPOAuthAPIRequestLoader.h"
 #import "MPOAuthCredentialStore.h"
 #import "MPURLRequestParameter.h"
-#import "MUAppDelegate.h"
-#import "MULocationManager.h"
 
 #import <libxml/parser.h>
 #import <libxml/xpath.h>
@@ -36,55 +33,17 @@
 	return self;
 }
 
-- (void)authenticate {
+- (void)authenticateWithParamsBlock:(NSArray *(^)())paramsBlock
+{
 	id <MPOAuthCredentialStore> credentials = [self.oauthAPI credentials];
 	
 	if (!credentials.accessToken && !credentials.accessTokenSecret) {
 		
-		NSMutableArray *params = [[NSMutableArray alloc] initWithCapacity:2];
-		
-		NSString *fbAccessToken = nil;
-        FBSession * fbSession = FBSession.activeSession;
-        if (fbSession.state == FBSessionStateOpen) {
-            fbAccessToken = fbSession.accessToken;
+        NSArray *params = nil;
+        if (paramsBlock) {
+            params = paramsBlock();
         }
-		if ([fbAccessToken length] > 0) {
-			MPURLRequestParameter *accessTokenParameter = [[MPURLRequestParameter alloc] initWithName:@"fb_token" andValue:fbAccessToken];
-			[params addObject:accessTokenParameter];
-		}
-		else {
-			NSString *name = [[self.oauthAPI credentials] name];
-			NSString *email = [[self.oauthAPI credentials] username];
-			NSString *password = [[self.oauthAPI credentials] password];
-			NSAssert(email, @"AuthExchange requires a email credential");
-			NSAssert(password, @"AuthExchange requires a Password credential");
-            CLLocation *lastKnownLocation = [[MULocationManager sharedLocationManager] lastKnownLocation];
-            
-            if (lastKnownLocation != nil) {
-                NSString * latString = [[NSNumber numberWithFloat:[lastKnownLocation coordinate].latitude] stringValue];
-                MPURLRequestParameter * lat = [[MPURLRequestParameter alloc] initWithName:@"lat" andValue:latString];
-                [params addObject:lat];
-
-                NSString * lonString = [[NSNumber numberWithFloat:[lastKnownLocation coordinate].longitude] stringValue];
-                MPURLRequestParameter * lon = [[MPURLRequestParameter alloc] initWithName:@"lon" andValue:lonString];
-                [params addObject:lon];
-            }
-		
-			MPURLRequestParameter *fieldsParameter = [[MPURLRequestParameter alloc] initWithName:@"fields" andValue:@"gender,birthday,city_id"];
-			[params addObject:fieldsParameter];
-
-			MPURLRequestParameter *usernameParameter = [[MPURLRequestParameter alloc] initWithName:@"email" andValue:email];
-			[params addObject:usernameParameter];
-
-			MPURLRequestParameter *passwordParameter = [[MPURLRequestParameter alloc] initWithName:@"password" andValue:password];
-			[params addObject:passwordParameter];
-            
-            if ([name length] > 0) {
-                MPURLRequestParameter *nameParameter = [[MPURLRequestParameter alloc] initWithName:@"name" andValue:name];
-                [params addObject:nameParameter];
-            }
-		}
-		
+        
 		[self.oauthAPI performPOSTMethod:nil
 								   atURL:self.oauthGetAccessTokenURL
 						  withParameters:params

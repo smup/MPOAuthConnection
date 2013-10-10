@@ -15,7 +15,6 @@
 #import "MPURLRequestParameter.h"
 
 #import "NSURL+MPURLParameterAdditions.h"
-#import "MUAppDelegate.h"
 
 #define kMPOAuthTokenRefreshDateDefaultsKey			@"MPOAuthAutomaticTokenRefreshLastExpiryDate"
 
@@ -76,7 +75,7 @@ NSString * const MPOAuthCredentialVerifierKey				= @"oauth_verifier";
 
 #pragma mark -
 
-- (void)authenticate {
+- (void)authenticateWithParamsBlock:(NSArray *(^)())paramsBlock {
 	id <MPOAuthCredentialStore> credentials = [self.oauthAPI credentials];
 	
 	if (!credentials.accessToken && !credentials.requestToken) {

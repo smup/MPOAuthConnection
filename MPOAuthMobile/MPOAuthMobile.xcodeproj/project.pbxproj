@@ -37,6 +37,7 @@
 		9BBCB44D1108E7F6003CD360 /* libxml2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 9BBCB44C1108E7F6003CD360 /* libxml2.dylib */; };
 		9BBCB4881108E954003CD360 /* oauthAutoConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9BBCB4871108E954003CD360 /* oauthAutoConfig.plist */; };
 		CB9213A90EF6127700A89BBD /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CB9213A80EF6127700A89BBD /* Security.framework */; };
+		DEDA0E1C18075B3F0099898B /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = DEDA0E1B18075B3F0099898B /* Default-568h@2x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,9 +53,10 @@
 		28C286DF0D94DF7D0034E888 /* RootViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RootViewController.h; sourceTree = "<group>"; };
 		28C286E00D94DF7D0034E888 /* RootViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RootViewController.m; sourceTree = "<group>"; };
 		29B97316FDCFA39411CA2CEA /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		39A1AF7B918F4780A49CD3C4 /* libPods.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libPods.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D1107310486CEB800E47090 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		9BBCB3A91108E0D9003CD360 /* Base64Transcoder.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = Base64Transcoder.c; path = ../Source/Framework/Crypto/Base64Transcoder.c; sourceTree = SOURCE_ROOT; };
-		9BBCB3AA1108E0D9003CD360 /* Base64Transcoder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Base64Transcoder.h; path = ../Source/Framework/Crypto/Base64Transcoder.h; sourceTree = SOURCE_ROOT; };
+		9BBCB3A91108E0D9003CD360 /* Base64Transcoder.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = Base64Transcoder.c; path = ../Source/Framework/Base64Transcoder.c; sourceTree = SOURCE_ROOT; };
+		9BBCB3AA1108E0D9003CD360 /* Base64Transcoder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Base64Transcoder.h; path = ../Source/Framework/Base64Transcoder.h; sourceTree = SOURCE_ROOT; };
 		9BBCB3AB1108E0D9003CD360 /* MPDebug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPDebug.h; path = ../Source/Framework/MPDebug.h; sourceTree = SOURCE_ROOT; };
 		9BBCB3AC1108E0D9003CD360 /* MPOAuth.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuth.h; path = ../Source/Framework/MPOAuth.h; sourceTree = SOURCE_ROOT; };
 		9BBCB3AD1108E0D9003CD360 /* MPOAuthAPI.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = MPOAuthAPI.h; path = ../Source/Framework/MPOAuthAPI.h; sourceTree = SOURCE_ROOT; };
@@ -97,6 +99,7 @@
 		9BBCB44C1108E7F6003CD360 /* libxml2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.dylib; path = usr/lib/libxml2.dylib; sourceTree = SDKROOT; };
 		9BBCB4871108E954003CD360 /* oauthAutoConfig.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = oauthAutoConfig.plist; path = ../Resources/oauthAutoConfig.plist; sourceTree = SOURCE_ROOT; };
 		CB9213A80EF6127700A89BBD /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		DEDA0E1B18075B3F0099898B /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -137,6 +140,7 @@
 		29B97314FDCFA39411CA2CEA /* CustomTemplate */ = {
 			isa = PBXGroup;
 			children = (
+				DEDA0E1B18075B3F0099898B /* Default-568h@2x.png */,
 				CBDC0D770F2068A100F30E8F /* MPOAuth */,
 				080E96DDFE201D6D7F000001 /* Classes */,
 				29B97315FDCFA39411CA2CEA /* Other Sources */,
@@ -175,6 +179,7 @@
 				1D30AB110D05D00D00671497 /* Foundation.framework */,
 				2892E40F0DC94CBA00A64D0F /* CoreGraphics.framework */,
 				CB9213A80EF6127700A89BBD /* Security.framework */,
+				39A1AF7B918F4780A49CD3C4 /* libPods.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -262,8 +267,11 @@
 /* Begin PBXProject section */
 		29B97313FDCFA39411CA2CEA /* Project object */ = {
 			isa = PBXProject;
+			attributes = {
+			};
 			buildConfigurationList = C01FCF4E08A954540054247B /* Build configuration list for PBXProject "MPOAuthMobile" */;
 			compatibilityVersion = "Xcode 3.1";
+			developmentRegion = English;
 			hasScannedForEncodings = 1;
 			knownRegions = (
 				English,
@@ -287,6 +295,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				28AD73600D9D9599002E5188 /* MainWindow.xib in Resources */,
+				DEDA0E1C18075B3F0099898B /* Default-568h@2x.png in Resources */,
 				2899E5600DE3E45000AC0155 /* RootViewController.xib in Resources */,
 				9BBCB4881108E954003CD360 /* oauthAutoConfig.plist in Resources */,
 			);
@@ -336,8 +345,14 @@
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = MPOAuthMobile_Prefix.pch;
-				GCC_PREPROCESSOR_DEFINITIONS = "DEBUG=1";
-				HEADER_SEARCH_PATHS = "/usr/include/libxml2/**";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"/usr/include/libxml2/**",
+					"$(inherited)",
+				);
 				INFOPLIST_FILE = Info.plist;
 				PRODUCT_NAME = MPOAuthMobile;
 			};

@@ -65,7 +65,7 @@ typedef enum {
 - (id)initWithCredentials:(NSDictionary *)inCredentials authenticationURL:(NSURL *)inAuthURL andBaseURL:(NSURL *)inBaseURL;
 - (id)initWithCredentials:(NSDictionary *)inCredentials authenticationURL:(NSURL *)inAuthURL andBaseURL:(NSURL *)inBaseURL autoStart:(BOOL)aFlag;
 
-- (void)authenticate;
+- (void)authenticateWithParamsBlock:(NSArray *(^)())paramsBlock;
 - (BOOL)isAuthenticated;
 
 - (MPOAuthAPIRequestLoader *)performMethod:(NSString *)inMethod withTarget:(id)inTarget andAction:(SEL)inAction;

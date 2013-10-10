@@ -12,7 +12,7 @@
 
 #import "NSURL+MPURLParameterAdditions.h"
 #import "NSString+URLEscapingAdditions.h"
-#import "MUAppDelegate.h"
+
 
 static NSString* kStringBoundary = @"3i2ndDfv2rTHiSisAbouNdArYfORhtTPEefj3q2f";
 
