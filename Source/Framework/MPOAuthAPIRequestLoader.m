@@ -15,7 +15,7 @@
 #import "MPURLRequestParameter.h"
 #import "NSURLResponse+Encoding.h"
 #import "MPDebug.h"
-#import "MUAppDelegate.h"
+
 
 NSString * const MPOAuthNotificationRequestTokenReceived	= @"MPOAuthNotificationRequestTokenReceived";
 NSString * const MPOAuthNotificationRequestTokenRejected	= @"MPOAuthNotificationRequestTokenRejected";
@@ -94,7 +94,14 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
 	if (!_dataAsString) {
 		_dataAsString = [[NSString alloc] initWithData:self.data encoding:[self.oauthResponse.urlResponse encoding]];
         if (([self.data length] > 0) && (_dataAsString == nil))  { // encoding error!
-            [MUAppDelegate ErrorForAnalytics:@"ENCODING ERROR" error:[NSError errorWithDomain:NSURLErrorDomain code:kCFURLErrorCannotDecodeContentData userInfo:nil] withTarget:_target withEvent:nil sendReport:NO];
+            NSDictionary *info =
+            @{
+              @"event" : @"MPO_AUTH_EXCEPTION",
+              @"error" : [NSError errorWithDomain:NSURLErrorDomain code:kCFURLErrorCannotDecodeContentData userInfo:nil],
+            };
+            [[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
+                                                                object:nil
+                                                              userInfo:info];
             _dataAsString = [[NSString alloc] initWithData:self.data encoding:NSISOLatin1StringEncoding];
             if (([self.data length] > 0) && (_dataAsString == nil))  { // encoding error! 
                 _dataAsString = [[NSString alloc] initWithData:self.data encoding:NSASCIIStringEncoding];
@@ -132,8 +139,15 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
         }
     }
     @catch (NSException *exception) {
-        [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__
-                                  withTarget:_target withEvent:nil withDict:nil sendReport:YES];     
+        NSDictionary *info =
+        @{
+          @"event" : @"MPO_AUTH_EXCEPTION",
+          @"exception" : exception,
+          @"function" : [NSString stringWithFormat:@"%s:%d",__PRETTY_FUNCTION__, __LINE__]
+          };
+        [[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
+                                                            object:nil
+                                                          userInfo:info];
     }
 }
 
@@ -147,7 +161,15 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
         }
     }
     @catch (NSException *exception) {
-        [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];
+        NSDictionary *info =
+        @{
+          @"event" : @"MPO_AUTH_EXCEPTION",
+          @"exception" : exception,
+          @"function" : [NSString stringWithFormat:@"%s:%d",__PRETTY_FUNCTION__, __LINE__]
+          };
+        [[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
+                                                            object:nil
+                                                          userInfo:info];
     }
 }
 
@@ -187,7 +209,15 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
             }
         }
         @catch (NSException *exception) {
-            [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];
+            NSDictionary *info =
+            @{
+              @"event" : @"MPO_AUTH_EXCEPTION",
+              @"exception" : exception,
+              @"function" : [NSString stringWithFormat:@"%s:%d",__PRETTY_FUNCTION__, __LINE__]
+              };
+            [[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
+                                                                object:nil
+                                                              userInfo:info];
         }
         [_error release];
         _error = nil;
@@ -199,7 +229,15 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
                 [_target performSelector:_action withObject:self withObject:self.data];
             }
             @catch (NSException *exception) {
-                [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];     
+                NSDictionary *info =
+                @{
+                  @"event" : @"MPO_AUTH_EXCEPTION",
+                  @"exception" : exception,
+                  @"function" : [NSString stringWithFormat:@"%s:%d",__PRETTY_FUNCTION__, __LINE__]
+                  };
+                [[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
+                                                                    object:nil
+                                                                  userInfo:info];
             }
         } else {
             @try {
@@ -207,7 +245,15 @@ NSString * const MPOAuthNotificationErrorHasOccurred		= @"MPOAuthNotificationErr
             }
             @catch (NSException *exception)
             {
-                [MUAppDelegate ExceptionForAnalytics:@"MPO_AUTH_EXCEPTION" exception:exception function:__PRETTY_FUNCTION__ line:__LINE__ withTarget:_target  withEvent:nil withDict:nil sendReport:YES];     
+                NSDictionary *info =
+                @{
+                    @"event" : @"MPO_AUTH_EXCEPTION",
+                    @"exception" : exception,
+                    @"function" : [NSString stringWithFormat:@"%s:%d",__PRETTY_FUNCTION__, __LINE__]
+                };
+                [[NSNotificationCenter defaultCenter] postNotificationName:MPOAuthNotificationErrorHasOccurred
+                                                                    object:nil
+                                                                  userInfo:info];
             }
         }
     }

@@ -11,7 +11,7 @@
 #import "MPOAuthURLResponse.h"
 #import "MPOAuthParameterFactory.h"
 #import "MPOAuthCredentialConcreteStore.h"
-#import "MUAppDelegate.h"
+
 
 @interface MPOAuthURLResponse ()
 @property (nonatomic, readwrite, retain) NSURLResponse *urlResponse;

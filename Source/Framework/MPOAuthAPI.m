@@ -62,7 +62,7 @@ NSString *kMPOAuthSignatureMethod					= @"kMPOAuthSignatureMethod";
 		activeLoaders_ = [[NSMutableArray alloc] initWithCapacity:10];
 		
 		if (aFlag) {
-			[self authenticate];
+			[self authenticateWithParamsBlock:NULL];
 		}
 	}
 	return self;	
@@ -110,9 +110,9 @@ NSString *kMPOAuthSignatureMethod					= @"kMPOAuthSignatureMethod";
 
 #pragma mark -
 
-- (void)authenticate {
+- (void)authenticateWithParamsBlock:(NSArray *(^)())paramsBlock {
 	NSAssert(credentials_.consumerKey, @"A Consumer Key is required for use of OAuth.");
-	[self.authenticationMethod authenticate];
+	[self.authenticationMethod authenticateWithParamsBlock:paramsBlock];
 }
 
 - (BOOL)isAuthenticated {

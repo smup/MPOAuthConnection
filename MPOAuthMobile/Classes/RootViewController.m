@@ -53,7 +53,7 @@
 		((MPOAuthAuthenticationMethodOAuth *)_oauthAPI.authenticationMethod).delegate = (id <MPOAuthAuthenticationMethodOAuthDelegate>)[UIApplication sharedApplication].delegate;
 	}
 
-	[_oauthAPI authenticate];
+	[_oauthAPI authenticateWithParamsBlock:NULL];
 }
 
 - (void)requestTokenReceived:(NSNotification *)inNotification {
@@ -94,7 +94,7 @@
 - (void)reauthenticate {
 	[self.navigationItem setPrompt:@"Reauthenticating User"];
 	textOutput.text = @"";
-	[_oauthAPI authenticate];	
+	[_oauthAPI authenticateWithParamsBlock:NULL];
 }
 
 @end

@@ -93,8 +93,8 @@ NSString * const MPOAuthAccessTokenURLKey					= @"MPOAuthAccessTokenURL";
 
 #pragma mark -
 
-- (void)authenticate {
-	[NSException raise:@"Not Implemented" format:@"All subclasses of MPOAuthAuthenticationMethod are required to implement -authenticate"];
+- (void)authenticateWithParamsBlock:(NSArray *(^)())paramsBlock {
+	[NSException raise:@"Not Implemented" format:@"All subclasses of MPOAuthAuthenticationMethod are required to implement -authenticateWithBlock:"];
 }
 
 - (void)setTokenRefreshInterval:(NSTimeInterval)inTimeInterval {
